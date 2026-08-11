@@ -1,32 +1,49 @@
+from memory import remember, recall
+
 import logging
-from livekit.agents import function_tool, RunContext
-import requests
-from langchain_community.tools import DuckDuckGoSearchRun
 import os
 import smtplib
-from email.mime.multipart import MIMEMultipart  
-from email.mime.text import MIMEText
 from typing import Optional
+
+import requests
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from langchain_community.tools import DuckDuckGoSearchRun
+from livekit.agents import function_tool, RunContext
+
 
 @function_tool()
 async def get_weather(
     context: RunContext,  # type: ignore
-    city: str) -> str:
+    city: str
+) -> str:
     """
     Get the current weather for a given city.
     """
     try:
         response = requests.get(
-            f"https://wttr.in/{city}?format=3")
+            f"https://wttr.in/{city}?format=3",
+            timeout=10
+        )
+
         if response.status_code == 200:
-            logging.info(f"Weather for {city}: {response.text.strip()}")
-            return response.text.strip()   
-        else:
-            logging.error(f"Failed to get weather for {city}: {response.status_code}")
-            return f"Could not retrieve weather for {city}."
+            logging.info(
+                f"Weather for {city}: {response.text.strip()}"
+            )
+            return response.text.strip()
+
+        logging.error(
+            f"Failed to get weather for {city}: {response.status_code}"
+        )
+        return f"Could not retrieve weather for {city}."
+
     except Exception as e:
-        logging.error(f"Error retrieving weather for {city}: {e}")
-        return f"An error occurred while retrieving weather for {city}." 
+        logging.error(
+            f"Error retrieving weather for {city}: {e}"
+        )
+        return f"An error occurred while retrieving weather for {city}."
+
 
 @function_tool()
 async def search_web(
@@ -40,15 +57,23 @@ async def search_web(
         search = DuckDuckGoSearchRun()
         results = search.invoke(query)
 
-        logging.info(f"Search results for '{query}': {results}")
+        logging.info(
+            f"Search results for '{query}': {results}"
+        )
 
         return str(results)
 
     except Exception as e:
-        logging.error(f"Error searching the web for '{query}': {e}")
-        return f"An error occurred while searching the web for '{query}': {e}"
+        logging.error(
+            f"Error searching the web for '{query}': {e}"
+        )
+        return (
+            f"An error occurred while searching the web for "
+            f"'{query}': {e}"
+        )
 
-@function_tool()    
+
+@function_tool()
 async def send_email(
     context: RunContext,  # type: ignore
     to_email: str,
@@ -58,7 +83,7 @@ async def send_email(
 ) -> str:
     """
     Send an email through Gmail.
-    
+
     Args:
         to_email: Recipient email address
         subject: Email subject line
@@ -69,49 +94,136 @@ async def send_email(
         # Gmail SMTP configuration
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
-        
+
         # Get credentials from environment variables
         gmail_user = os.getenv("GMAIL_USER")
-        gmail_password = os.getenv("GMAIL_APP_PASSWORD")  # Use App Password, not regular password
-        
+        gmail_password = os.getenv("GMAIL_APP_PASSWORD")
+
         if not gmail_user or not gmail_password:
-            logging.error("Gmail credentials not found in environment variables")
-            return "Email sending failed: Gmail credentials not configured."
-        
-        # Create message
+            logging.error(
+                "Gmail credentials not found in environment variables"
+            )
+            return (
+                "Email sending failed: "
+                "Gmail credentials not configured."
+            )
+
+        # Create email
         msg = MIMEMultipart()
-        msg['From'] = gmail_user
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        
+        msg["From"] = gmail_user
+        msg["To"] = to_email
+        msg["Subject"] = subject
+
         # Add CC if provided
         recipients = [to_email]
+
         if cc_email:
-            msg['Cc'] = cc_email
+            msg["Cc"] = cc_email
             recipients.append(cc_email)
-        
-        # Attach message body
-        msg.attach(MIMEText(message, 'plain'))
-        
+
+        # Add message body
+        msg.attach(MIMEText(message, "plain"))
+
         # Connect to Gmail SMTP server
         server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()  # Enable TLS encryption
+        server.starttls()
+
+        # Login using Gmail App Password
         server.login(gmail_user, gmail_password)
-        
+
         # Send email
         text = msg.as_string()
-        server.sendmail(gmail_user, recipients, text)
+        server.sendmail(
+            gmail_user,
+            recipients,
+            text
+        )
+
         server.quit()
-        
-        logging.info(f"Email sent successfully to {to_email}")
+
+        logging.info(
+            f"Email sent successfully to {to_email}"
+        )
+
         return f"Email sent successfully to {to_email}"
-        
+
     except smtplib.SMTPAuthenticationError:
-        logging.error("Gmail authentication failed")
-        return "Email sending failed: Authentication error. Please check your Gmail credentials."
+        logging.error(
+            "Gmail authentication failed"
+        )
+        return (
+            "Email sending failed: Authentication error. "
+            "Please check your Gmail App Password."
+        )
+
     except smtplib.SMTPException as e:
-        logging.error(f"SMTP error occurred: {e}")
-        return f"Email sending failed: SMTP error - {str(e)}"
+        logging.error(
+            f"SMTP error occurred: {e}"
+        )
+        return (
+            f"Email sending failed: SMTP error - {str(e)}"
+        )
+
     except Exception as e:
-        logging.error(f"Error sending email: {e}")
-        return f"An error occurred while sending email: {str(e)}"
+        logging.error(
+            f"Error sending email: {e}"
+        )
+        return (
+            f"An error occurred while sending email: {str(e)}"
+        )
+
+
+@function_tool()
+async def remember_information(
+    context: RunContext,  # type: ignore
+    key: str,
+    value: str
+) -> str:
+    """
+    Remember useful information provided by the user.
+
+    Args:
+        key: A short name describing the information.
+        value: The information to remember.
+    """
+    try:
+        result = remember(key, value)
+
+        logging.info(
+            f"Memory saved: {key} = {value}"
+        )
+
+        return result
+
+    except Exception as e:
+        logging.error(
+            f"Error saving memory: {e}"
+        )
+        return f"I couldn't save that information: {e}"
+
+
+@function_tool()
+async def recall_information(
+    context: RunContext,  # type: ignore
+    key: str
+) -> str:
+    """
+    Recall information previously saved in memory.
+
+    Args:
+        key: The name of the information to retrieve.
+    """
+    try:
+        result = recall(key)
+
+        logging.info(
+            f"Memory recalled for: {key}"
+        )
+
+        return result
+
+    except Exception as e:
+        logging.error(
+            f"Error recalling memory: {e}"
+        )
+        return f"I couldn't retrieve that information: {e}"
