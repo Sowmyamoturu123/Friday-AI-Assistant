@@ -1,4 +1,9 @@
-from memory import remember, recall
+from memory import (
+    remember,
+    recall,
+    get_all_memories,
+    load_memory,
+)
 
 import logging
 import os
@@ -34,15 +39,21 @@ async def get_weather(
             return response.text.strip()
 
         logging.error(
-            f"Failed to get weather for {city}: {response.status_code}"
+            f"Failed to get weather for {city}: "
+            f"{response.status_code}"
         )
+
         return f"Could not retrieve weather for {city}."
 
     except Exception as e:
         logging.error(
             f"Error retrieving weather for {city}: {e}"
         )
-        return f"An error occurred while retrieving weather for {city}."
+
+        return (
+            f"An error occurred while retrieving "
+            f"weather for {city}."
+        )
 
 
 @function_tool()
@@ -67,9 +78,10 @@ async def search_web(
         logging.error(
             f"Error searching the web for '{query}': {e}"
         )
+
         return (
-            f"An error occurred while searching the web for "
-            f"'{query}': {e}"
+            f"An error occurred while searching the web "
+            f"for '{query}': {e}"
         )
 
 
@@ -103,6 +115,7 @@ async def send_email(
             logging.error(
                 "Gmail credentials not found in environment variables"
             )
+
             return (
                 "Email sending failed: "
                 "Gmail credentials not configured."
@@ -110,6 +123,7 @@ async def send_email(
 
         # Create email
         msg = MIMEMultipart()
+
         msg["From"] = gmail_user
         msg["To"] = to_email
         msg["Subject"] = subject
@@ -122,17 +136,27 @@ async def send_email(
             recipients.append(cc_email)
 
         # Add message body
-        msg.attach(MIMEText(message, "plain"))
+        msg.attach(
+            MIMEText(message, "plain")
+        )
 
         # Connect to Gmail SMTP server
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP(
+            smtp_server,
+            smtp_port
+        )
+
         server.starttls()
 
         # Login using Gmail App Password
-        server.login(gmail_user, gmail_password)
+        server.login(
+            gmail_user,
+            gmail_password
+        )
 
         # Send email
         text = msg.as_string()
+
         server.sendmail(
             gmail_user,
             recipients,
@@ -145,12 +169,15 @@ async def send_email(
             f"Email sent successfully to {to_email}"
         )
 
-        return f"Email sent successfully to {to_email}"
+        return (
+            f"Email sent successfully to {to_email}"
+        )
 
     except smtplib.SMTPAuthenticationError:
         logging.error(
             "Gmail authentication failed"
         )
+
         return (
             "Email sending failed: Authentication error. "
             "Please check your Gmail App Password."
@@ -160,6 +187,7 @@ async def send_email(
         logging.error(
             f"SMTP error occurred: {e}"
         )
+
         return (
             f"Email sending failed: SMTP error - {str(e)}"
         )
@@ -168,6 +196,7 @@ async def send_email(
         logging.error(
             f"Error sending email: {e}"
         )
+
         return (
             f"An error occurred while sending email: {str(e)}"
         )
@@ -176,21 +205,31 @@ async def send_email(
 @function_tool()
 async def remember_information(
     context: RunContext,  # type: ignore
-    key: str,
-    value: str
+    memory: str
 ) -> str:
     """
-    Remember useful information provided by the user.
+    Save an important piece of information provided by the user.
+
+    Use this when the user explicitly asks Friday to remember something.
 
     Args:
-        key: A short name describing the information.
-        value: The information to remember.
+        memory: The complete information to remember.
     """
     try:
-        result = remember(key, value)
+        # Load existing memories
+        memory_data = load_memory()
+
+        # Create a unique memory key
+        key = f"memory_{len(memory_data) + 1}"
+
+        # Save the complete natural-language memory
+        result = remember(
+            key,
+            memory
+        )
 
         logging.info(
-            f"Memory saved: {key} = {value}"
+            f"Memory saved: {key} = {memory}"
         )
 
         return result
@@ -199,7 +238,10 @@ async def remember_information(
         logging.error(
             f"Error saving memory: {e}"
         )
-        return f"I couldn't save that information: {e}"
+
+        return (
+            f"I couldn't save that information: {e}"
+        )
 
 
 @function_tool()
@@ -208,22 +250,82 @@ async def recall_information(
     key: str
 ) -> str:
     """
-    Recall information previously saved in memory.
+    Recall information from Friday's persistent memory.
 
     Args:
-        key: The name of the information to retrieve.
+        key: The topic or information the user wants to find.
     """
     try:
-        result = recall(key)
+        memory_data = load_memory()
+
+        if not memory_data:
+            return (
+                "I don't have any memories stored yet."
+            )
+
+        search_text = (
+            key.lower()
+            .replace("_", " ")
+        )
+
+        matches = []
+
+        for stored_key, value in memory_data.items():
+
+            stored_key_text = (
+                stored_key
+                .lower()
+                .replace("_", " ")
+            )
+
+            value_text = str(value).lower()
+
+            if (
+                search_text in stored_key_text
+                or search_text in value_text
+            ):
+                matches.append(str(value))
+
+        if matches:
+            return " | ".join(matches)
+
+        return (
+            f"I don't have any information stored "
+            f"about {key}."
+        )
+
+    except Exception as e:
+        logging.error(
+            f"Error recalling memory: {e}"
+        )
+
+        return (
+            f"I couldn't retrieve that information: {e}"
+        )
+
+
+@function_tool()
+async def list_memories(
+    context: RunContext,  # type: ignore
+) -> str:
+    """
+    Retrieve all information currently stored
+    in Friday's persistent memory.
+    """
+    try:
+        result = get_all_memories()
 
         logging.info(
-            f"Memory recalled for: {key}"
+            "Retrieved all stored memories"
         )
 
         return result
 
     except Exception as e:
         logging.error(
-            f"Error recalling memory: {e}"
+            f"Error retrieving memories: {e}"
         )
-        return f"I couldn't retrieve that information: {e}"
+
+        return (
+            f"I couldn't retrieve your memories: {e}"
+        )
